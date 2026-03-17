@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 
 from giga_mcp.discovery import load_discovery_result
 
-from .store import create_source_set
+from .store import create_source_set, list_source_sets
 
 
 def register_source_url(
@@ -82,4 +82,13 @@ def register_discovered_sources(discovery_id: str) -> dict[str, object]:
         "tool": "register_discovered_sources",
         "discovery_id": discovery_id,
         "source_ids": [source_id],
+    }
+
+
+def list_sources() -> dict[str, object]:
+    sources = list_source_sets()
+    return {
+        "status": "ok",
+        "tool": "list_sources",
+        "sources": sources,
     }
