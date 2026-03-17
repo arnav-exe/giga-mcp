@@ -3,6 +3,7 @@ from fastmcp import FastMCP
 
 from giga_mcp.discovery import discover_official_sources as run_discovery
 from giga_mcp.discovery import save_discovery_result
+from giga_mcp.sources import register_discovered_sources as run_register_discovered_sources
 from giga_mcp.sources import register_source_url
 
 
@@ -45,11 +46,7 @@ def create_server() -> FastMCP:
 
     @app.tool()
     def register_discovered_sources(discovery_id: str) -> dict[str, Any]:
-        return _not_implemented(
-            "register_discovered_sources",
-            discovery_id=discovery_id,
-            source_ids=[],
-        )
+        return run_register_discovered_sources(discovery_id=discovery_id)
 
     @app.tool()
     def list_sources() -> dict[str, Any]:
