@@ -40,6 +40,3 @@ def load_discovery_result(discovery_id: str, db_path: str | Path | None = None,)
     if not row:
         return None
     return DiscoveryResult.model_validate(json.loads(row["payload_json"]))
-
-
-
