@@ -1,6 +1,5 @@
 # shared response models for mcp tools
 from typing import Any
-
 from pydantic import BaseModel, Field
 
 

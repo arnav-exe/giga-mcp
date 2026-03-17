@@ -101,8 +101,12 @@ def _probe_hosts(allowlist_hosts: list[str]) -> list[str]:
 
 if __name__ == "__main__":
     pprint(discover_official_sources("metaflow", "pypi"))
-    # pprint(discover_official_sources("jwt-decode", "npm"))
-    #
-    # print()
-    #
-    # pprint(discover_official_sources("asdf", "npm"))
+    print()
+    pprint(discover_official_sources("jwt-decode", "npm"))
+
+    print()
+    print()
+    print()
+
+    # supposed to fail
+    pprint(discover_official_sources(str(uuid4()), "npm"))
