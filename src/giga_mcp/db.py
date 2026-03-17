@@ -3,11 +3,11 @@ from pathlib import Path
 import sqlite3
 
 
-def default_db_path():
+def default_db_path() -> Path:
     return Path.cwd() / ".giga-mcp" / "giga_mcp.sqlite3"
 
 
-def connect(db_path=None):
+def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -17,7 +17,7 @@ def connect(db_path=None):
     return connection
 
 
-def init_db(connection):
+def init_db(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
         create table if not exists schema_meta (
@@ -52,6 +52,14 @@ def init_db(connection):
             stale integer not null default 0,
             unique(source_id, indexed_at),
             foreign key(source_id) references source_sets(source_id)
+        );
+
+        create table if not exists discovery_runs (
+            discovery_id text primary key,
+            name text not null,
+            ecosystem text not null,
+            created_at text not null,
+            payload_json text not null
         );
         """
     )

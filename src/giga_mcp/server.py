@@ -2,6 +2,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from giga_mcp.discovery import discover_official_sources as run_discovery
+from giga_mcp.discovery import save_discovery_result
 
 
 def _not_implemented(tool: str, **payload: Any) -> dict[str, Any]:
@@ -23,9 +24,9 @@ def create_server() -> FastMCP:
         timeout: float = 10.0,
     ) -> dict[str, Any]:
         try:
-            return run_discovery(
-                name=name, ecosystem=ecosystem, timeout=timeout
-            ).model_dump()
+            result = run_discovery(name=name, ecosystem=ecosystem, timeout=timeout)
+            save_discovery_result(result)
+            return result.model_dump()
         except ValueError as error:
             return {
                 "status": "error",
