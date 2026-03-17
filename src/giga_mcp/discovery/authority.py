@@ -105,4 +105,6 @@ def _github_repo(repository_url):
 if __name__ == "__main__":
     pprint(fetch_npm_authority("jwt-decode"))
 
+    print()
+
     pprint(fetch_pypi_authority("metaflow"))
