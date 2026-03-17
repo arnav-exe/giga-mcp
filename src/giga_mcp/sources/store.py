@@ -12,11 +12,7 @@ class SourceUrlRow(TypedDict):
     tier: int
 
 
-def create_source_set(
-    source_name: str | None,
-    urls: list[SourceUrlRow],
-    db_path: str | Path | None = None,
-) -> str:
+def create_source_set(source_name: str | None, urls: list[SourceUrlRow], db_path: str | Path | None = None,) -> str:
     now = datetime.now(timezone.utc).isoformat()
     source_id = str(uuid4())
     source_rows: list[tuple[str, str, str, int, str]] = [
@@ -73,4 +69,24 @@ def touch_source_set(source_id: str, db_path: str | Path | None = None) -> bool:
             (updated_at, "active", source_id),
         )
         connection.commit()
+
     return cursor.rowcount > 0
+
+
+def list_source_docs(source_id: str | None = None, framework: str | None = None, db_path: str | Path | None = None,) -> list[dict[str, object]]:
+    with connect(db_path) as connection:
+        init_db(connection)
+        query = """
+            select s.source_id, s.source_name, s.status, u.url, u.host, u.tier
+            from source_sets s
+            join source_urls u on u.source_id = s.source_id
+            where (? is null or s.source_id = ?)
+              and (? is null or lower(ifnull(s.source_name, '')) like '%' || lower(?) || '%')
+            order by s.created_at asc, u.tier asc, u.url asc
+            """
+        rows = connection.execute(
+            query,
+            (source_id, source_id, framework, framework),
+        ).fetchall()
+
+    return [dict(row) for row in rows]

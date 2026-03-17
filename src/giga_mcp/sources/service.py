@@ -2,7 +2,12 @@ from urllib.parse import urlparse
 
 from giga_mcp.discovery import load_discovery_result
 
-from .store import create_source_set, list_source_sets, touch_source_set
+from .store import (
+    create_source_set,
+    list_source_docs,
+    list_source_sets,
+    touch_source_set,
+)
 
 
 def register_source_url(
@@ -110,4 +115,16 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
         "source_id": source_id,
         "force": force,
         "refreshed": True,
+    }
+
+
+def list_docs(source_id: str | None = None, framework: str | None = None,) -> dict[str, object]:
+    docs = list_source_docs(source_id=source_id, framework=framework)
+
+    return {
+        "status": "ok",
+        "tool": "list_docs",
+        "source_id": source_id,
+        "framework": framework,
+        "docs": docs,
     }
