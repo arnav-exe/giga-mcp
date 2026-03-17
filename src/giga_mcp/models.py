@@ -1,4 +1,6 @@
 # shared response models for mcp tools
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -16,8 +18,8 @@ class RejectedCandidate(BaseModel):
 
 
 class AuthorityEvidence(BaseModel):
-    registry_fields: dict[str, str] = Field(default_factory=dict)
-    repository_fields: dict[str, str] = Field(default_factory=dict)
+    registry_fields: dict[str, Any] = Field(default_factory=dict)
+    repository_fields: dict[str, Any] = Field(default_factory=dict)
     allowlist_hosts: list[str] = Field(default_factory=list)
 
 
