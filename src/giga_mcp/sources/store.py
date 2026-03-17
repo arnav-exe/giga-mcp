@@ -12,7 +12,14 @@ class SourceUrlRow(TypedDict):
     tier: int
 
 
-def create_source_set(source_name: str | None, urls: list[SourceUrlRow], db_path: str | Path | None = None,) -> str:
+class SourceDocumentRow(TypedDict):
+    url: str
+    fetched_at: str
+    status_code: int | None
+    content: str | None
+
+
+def create_source_set(source_name: str | None, urls: list[SourceUrlRow], db_path: str | Path | None = None) -> str:
     now = datetime.now(timezone.utc).isoformat()
     source_id = str(uuid4())
     source_rows: list[tuple[str, str, str, int, str]] = [
@@ -73,7 +80,7 @@ def touch_source_set(source_id: str, db_path: str | Path | None = None) -> bool:
     return cursor.rowcount > 0
 
 
-def list_source_docs(source_id: str | None = None, framework: str | None = None, db_path: str | Path | None = None,) -> list[dict[str, object]]:
+def list_source_docs(source_id: str | None = None, framework: str | None = None, db_path: str | Path | None = None) -> list[dict[str, object]]:
     with connect(db_path) as connection:
         init_db(connection)
         query = """
@@ -90,3 +97,47 @@ def list_source_docs(source_id: str | None = None, framework: str | None = None,
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def get_source_urls(source_id: str, db_path: str | Path | None = None) -> list[SourceUrlRow]:
+    with connect(db_path) as connection:
+        init_db(connection)
+        rows = connection.execute(
+            """
+            select url, host, tier
+            from source_urls
+            where source_id = ?
+            order by tier asc, url asc
+            """,
+            (source_id),
+        ).fetchall()
+
+    return [
+        SourceUrlRow(url=row["url"], host=row["host"], tier=row["tier"]) for row in rows
+    ]
+
+
+def replace_source_documents(source_id: str, documents: list[SourceDocumentRow], db_path: str | Path | None = None) -> None:
+    with connect(db_path) as connection:
+        init_db(connection)
+        connection.execute(
+            "delete from source_documents where source_id = ?",
+            (source_id),
+        )
+        connection.executemany(
+            """
+            insert into source_documents (source_id, url, fetched_at, status_code, content)
+            values (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    source_id,
+                    document["url"],
+                    document["fetched_at"],
+                    document["status_code"],
+                    document["content"],
+                )
+                for document in documents
+            ],
+        )
+        connection.commit()

@@ -61,6 +61,16 @@ def init_db(connection: sqlite3.Connection) -> None:
             created_at text not null,
             payload_json text not null
         );
+
+        create table if not exists source_documents (
+            source_id text not null,
+            url text not null,
+            fetched_at text not null,
+            status_code integer,
+            content text,
+            primary key(source_id, url),
+            foreign key(source_id) references source_sets(source_id)
+        );
         """
     )
 
