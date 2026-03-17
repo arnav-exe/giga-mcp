@@ -109,7 +109,7 @@ def get_source_urls(source_id: str, db_path: str | Path | None = None) -> list[S
             where source_id = ?
             order by tier asc, url asc
             """,
-            (source_id),
+            (source_id,),
         ).fetchall()
 
     return [
@@ -122,7 +122,7 @@ def replace_source_documents(source_id: str, documents: list[SourceDocumentRow],
         init_db(connection)
         connection.execute(
             "delete from source_documents where source_id = ?",
-            (source_id),
+            (source_id,),
         )
         connection.executemany(
             """
@@ -141,3 +141,21 @@ def replace_source_documents(source_id: str, documents: list[SourceDocumentRow],
             ],
         )
         connection.commit()
+
+
+def list_cached_documents(source_id: str | None = None, framework: str | None = None, db_path: str | Path | None = None) -> list[dict[str, object]]:
+    with connect(db_path) as connection:
+        init_db(connection)
+        rows = connection.execute(
+            """
+            select d.source_id, d.url, d.fetched_at, d.status_code, d.content, s.source_name
+            from source_documents d
+            join source_sets s on s.source_id = d.source_id
+            where (? is null or d.source_id = ?)
+              and (? is null or lower(ifnull(s.source_name, '')) like '%' || lower(?) || '%')
+            order by s.created_at asc, d.url asc
+            """,
+            (source_id, source_id, framework, framework),
+        ).fetchall()
+
+    return [dict(row) for row in rows]

@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from urllib.parse import urlparse
-
 import httpx
 
 from giga_mcp.discovery import load_discovery_result
@@ -10,6 +9,7 @@ from .store import (
     SourceUrlRow,
     create_source_set,
     get_source_urls,
+    list_cached_documents,
     list_source_docs,
     list_source_sets,
     replace_source_documents,
@@ -138,7 +138,7 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
     }
 
 
-def list_docs(source_id: str | None = None, framework: str | None = None,) -> dict[str, object]:
+def list_docs(source_id: str | None = None, framework: str | None = None) -> dict[str, object]:
     docs = list_source_docs(source_id=source_id, framework=framework)
 
     return {
@@ -147,6 +147,53 @@ def list_docs(source_id: str | None = None, framework: str | None = None,) -> di
         "source_id": source_id,
         "framework": framework,
         "docs": docs,
+    }
+
+
+def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8) -> dict[str, object]:
+    tokens = _tokens(query)
+    if not tokens:
+        return {
+            "status": "ok",
+            "tool": "search_docs",
+            "query": query,
+            "source_id": source_id,
+            "framework": framework,
+            "section": section,
+            "top_k": top_k,
+            "results": [],
+            "stale": False,
+        }
+
+    documents = list_cached_documents(source_id=source_id, framework=framework)
+
+    results = [
+        result
+        for document in documents
+        for result in _search_document(
+            document=document, tokens=tokens, section=section
+        )
+    ]
+    results.sort(
+        key=lambda item: (-item["score"], item["source_url"], item["chunk_id"])
+    )
+
+    limited = results[: max(1, top_k)]
+    indexed_at = max(
+        (str(document["fetched_at"]) for document in documents), default=""
+    )
+
+    return {
+        "status": "ok",
+        "tool": "search_docs",
+        "query": query,
+        "source_id": source_id,
+        "framework": framework,
+        "section": section,
+        "top_k": top_k,
+        "results": limited,
+        "indexed_at": indexed_at,
+        "stale": False,
     }
 
 
@@ -176,3 +223,62 @@ def _fetch_source_documents(source_urls: list[SourceUrlRow],) -> list[SourceDocu
             )
 
     return documents
+
+
+def _search_document(document: dict[str, object], tokens: list[str], section: str | None) -> list[dict[str, object]]:
+    content = document.get("content")
+    status_code = document.get("status_code")
+
+    if status_code != 200 or not isinstance(content, str) or not content.strip():
+        return []
+
+    lowered_section = section.lower() if section else None
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    title = _title(lines)
+    matches: list[dict[str, object]] = []
+
+    for index, line in enumerate(lines):
+        line_lower = line.lower()
+        score = sum(line_lower.count(token) for token in tokens)
+
+        if score == 0:
+            continue
+        section_name = _nearest_heading(lines, index)
+
+        if lowered_section and lowered_section not in section_name.lower():
+            continue
+
+        matches.append(
+            {
+                "snippet": line[:400],
+                "source_url": str(document["url"]),
+                "title": title,
+                "section": section_name,
+                "chunk_id": f"{document['source_id']}:{index}",
+                "score": float(score),
+            }
+        )
+
+    return matches
+
+
+def _tokens(query: str) -> list[str]:
+    return [part for part in query.lower().split() if part]
+
+
+def _title(lines: list[str]) -> str:
+    for line in lines:
+        if line.startswith("#"):
+            return line.lstrip("# ") or "untitled"
+
+    return lines[0][:120] if lines else "untitled"
+
+
+def _nearest_heading(lines: list[str], index: int) -> str:
+    for pointer in range(index, -1, -1):
+        candidate = lines[pointer]
+
+        if candidate.startswith("#"):
+            return candidate.lstrip("# ") or "general"
+
+    return "general"

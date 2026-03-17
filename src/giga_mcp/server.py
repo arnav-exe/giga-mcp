@@ -6,9 +6,8 @@ from giga_mcp.discovery import save_discovery_result
 from giga_mcp.sources import list_docs as run_list_docs
 from giga_mcp.sources import refresh_source as run_refresh_source
 from giga_mcp.sources import list_sources as run_list_sources
-from giga_mcp.sources import (
-    register_discovered_sources as run_register_discovered_sources,
-)
+from giga_mcp.sources import search_docs as run_search_docs
+from giga_mcp.sources import register_discovered_sources as run_register_discovered_sources
 from giga_mcp.sources import register_source_url
 
 
@@ -63,15 +62,12 @@ def create_server() -> FastMCP:
 
     @app.tool()
     def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8) -> dict[str, Any]:
-        return _not_implemented(
-            "search_docs",
+        return run_search_docs(
             query=query,
             source_id=source_id,
             framework=framework,
             section=section,
             top_k=top_k,
-            results=[],
-            stale=False,
         )
 
     @app.tool()
@@ -83,12 +79,7 @@ def create_server() -> FastMCP:
         )
 
     @app.tool()
-    def get_excerpt(
-        query: str,
-        source_id: str | None = None,
-        top_k: int = 5,
-        max_chars: int = 4000,
-    ) -> dict[str, Any]:
+    def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_chars: int = 4000,) -> dict[str, Any]:
         return _not_implemented(
             "get_excerpt",
             query=query,

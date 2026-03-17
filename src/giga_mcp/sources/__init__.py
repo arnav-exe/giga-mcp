@@ -2,6 +2,7 @@ from .service import (
     list_docs,
     list_sources,
     refresh_source,
+    search_docs,
     register_discovered_sources,
     register_source_url,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "list_docs",
     "list_sources",
     "refresh_source",
+    "search_docs",
     "register_source_url",
     "register_discovered_sources",
     "create_source_set",
