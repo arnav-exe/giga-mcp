@@ -3,6 +3,7 @@ from pprint import pprint
 import httpx
 
 
+# (timeout in seconds)
 def fetch_npm_authority(name: str, timeout: float = 10.0):
     response = httpx.get(f"https://registry.npmjs.org/{name}/latest", timeout=timeout)
     response.raise_for_status()
@@ -20,6 +21,7 @@ def fetch_npm_authority(name: str, timeout: float = 10.0):
     }
 
 
+# (timeout in seconds)
 def fetch_pypi_authority(name: str, timeout: float = 10.0):
     response = httpx.get(f"https://pypi.org/pypi/{name}/json", timeout=timeout)
     response.raise_for_status()
