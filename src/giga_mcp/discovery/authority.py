@@ -1,9 +1,9 @@
 from urllib.parse import urlparse
-
+from pprint import pprint
 import httpx
 
 
-def fetch_npm_authority(name, timeout=10.0):
+def fetch_npm_authority(name: str, timeout: float = 10.0):
     response = httpx.get(f"https://registry.npmjs.org/{name}/latest", timeout=timeout)
     response.raise_for_status()
     payload = response.json()
@@ -15,6 +15,24 @@ def fetch_npm_authority(name, timeout=10.0):
             "homepage": _normalize_url(payload.get("homepage")),
             "repository": repository_url,
             "bugs": _bugs_url(payload.get("bugs")),
+        },
+        "repository": _github_repo(repository_url),
+    }
+
+
+def fetch_pypi_authority(name: str, timeout: float = 10.0):
+    response = httpx.get(f"https://pypi.org/pypi/{name}/json", timeout=timeout)
+    response.raise_for_status()
+    info = response.json().get("info", {})
+    repository_url = _pypi_repository_url(
+        info.get("project_urls"), info.get("home_page")
+    )
+    return {
+        "ecosystem": "pypi",
+        "name": name,
+        "registry_fields": {
+            "home_page": _normalize_url(info.get("home_page")),
+            "project_urls": _normalize_project_urls(info.get("project_urls")),
         },
         "repository": _github_repo(repository_url),
     }
@@ -47,6 +65,30 @@ def _normalize_url(raw):
     return value
 
 
+def _normalize_project_urls(project_urls):
+    if not isinstance(project_urls, dict):
+        return {}
+    normalized = {}
+    for key, value in project_urls.items():
+        if not key:
+            continue
+        url = _normalize_url(value)
+        if url:
+            normalized[key] = url
+    return normalized
+
+
+def _pypi_repository_url(project_urls, home_page):
+    urls = _normalize_project_urls(project_urls)
+    for key in urls:
+        if "repo" in key.lower() or "source" in key.lower() or "code" in key.lower():
+            return urls[key]
+    for value in urls.values():
+        if "github.com" in value.lower():
+            return value
+    return _normalize_url(home_page)
+
+
 def _github_repo(repository_url):
     if not repository_url:
         return None
@@ -57,3 +99,10 @@ def _github_repo(repository_url):
     if len(parts) < 2:
         return None
     return f"{parts[0]}/{parts[1]}"
+
+
+
+if __name__ == "__main__":
+    pprint(fetch_npm_authority("jwt-decode"))
+
+    pprint(fetch_pypi_authority("metaflow"))
