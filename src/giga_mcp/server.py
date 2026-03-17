@@ -1,5 +1,4 @@
-"""fastmcp entrypoint"""
-
+# fastmcp entrypoint
 from fastmcp import FastMCP
 
 
