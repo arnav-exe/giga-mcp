@@ -1,13 +1,27 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TypedDict
 from uuid import uuid4
 
 from giga_mcp.db import connect, init_db
 
 
-def create_source_set(source_name: str | None, urls: list[dict[str, object]], db_path: str | Path | None = None,) -> str:
+class SourceUrlRow(TypedDict):
+    url: str
+    host: str
+    tier: int
+
+
+def create_source_set(
+    source_name: str | None,
+    urls: list[SourceUrlRow],
+    db_path: str | Path | None = None,
+) -> str:
     now = datetime.now(timezone.utc).isoformat()
     source_id = str(uuid4())
+    source_rows: list[tuple[str, str, str, int, str]] = [
+        (source_id, url["url"], url["host"], url["tier"], now) for url in urls
+    ]
     with connect(db_path) as connection:
         init_db(connection)
         connection.execute(
@@ -22,16 +36,7 @@ def create_source_set(source_name: str | None, urls: list[dict[str, object]], db
             insert into source_urls (source_id, url, host, tier, created_at)
             values (?, ?, ?, ?, ?)
             """,
-            [
-                (
-                    source_id,
-                    str(url["url"]),
-                    str(url["host"]),
-                    int(url["tier"]),
-                    now,
-                )
-                for url in urls
-            ],
+            source_rows,
         )
         connection.commit()
 
@@ -53,3 +58,19 @@ def list_source_sets(db_path: str | Path | None = None) -> list[dict[str, object
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def touch_source_set(source_id: str, db_path: str | Path | None = None) -> bool:
+    with connect(db_path) as connection:
+        init_db(connection)
+        updated_at = datetime.now(timezone.utc).isoformat()
+        cursor = connection.execute(
+            """
+            update source_sets
+            set updated_at = ?, status = ?
+            where source_id = ?
+            """,
+            (updated_at, "active", source_id),
+        )
+        connection.commit()
+    return cursor.rowcount > 0

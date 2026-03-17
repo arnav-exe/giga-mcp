@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 
 from giga_mcp.discovery import load_discovery_result
 
-from .store import create_source_set, list_source_sets
+from .store import create_source_set, list_source_sets, touch_source_set
 
 
 def register_source_url(
@@ -91,4 +91,23 @@ def list_sources() -> dict[str, object]:
         "status": "ok",
         "tool": "list_sources",
         "sources": sources,
+    }
+
+
+def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
+    refreshed = touch_source_set(source_id)
+    if not refreshed:
+        return {
+            "status": "error",
+            "tool": "refresh_source",
+            "message": "source_id not found",
+            "source_id": source_id,
+            "force": force,
+        }
+    return {
+        "status": "ok",
+        "tool": "refresh_source",
+        "source_id": source_id,
+        "force": force,
+        "refreshed": True,
     }
