@@ -129,6 +129,19 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
             "force": force,
         }
 
+    snapshot = latest_cache_snapshot(source_id=source_id)
+    if snapshot and not force and not _snapshot_is_stale(snapshot):
+        return {
+            "status": "ok",
+            "tool": "refresh_source",
+            "source_id": source_id,
+            "force": force,
+            "refreshed": False,
+            "fetched_docs": 0,
+            "skipped": True,
+            "indexed_at": str(snapshot.get("indexed_at", "")),
+        }
+
     source_urls = get_source_urls(source_id)
     fetched_docs = _fetch_source_documents(source_urls)
     replace_source_documents(source_id=source_id, documents=fetched_docs)
@@ -145,6 +158,8 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
         "force": force,
         "refreshed": True,
         "fetched_docs": len(fetched_docs),
+        "skipped": False,
+        "indexed_at": indexed_at,
     }
 
 
