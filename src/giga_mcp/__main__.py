@@ -1,7 +1,9 @@
+from .logging import init_logger
 from .server import app
 
 
-def main():
+def main() -> None:
+    init_logger()
     app.run(transport="stdio")
 
 

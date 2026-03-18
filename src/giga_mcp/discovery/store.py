@@ -30,7 +30,7 @@ def save_discovery_result(result: DiscoveryResult, db_path: str | Path | None = 
         connection.commit()
 
 
-def load_discovery_result(discovery_id: str, db_path: str | Path | None = None,) -> DiscoveryResult | None:
+def load_discovery_result(discovery_id: str, db_path: str | Path | None = None) -> DiscoveryResult | None:
     with connect(db_path) as connection:
         init_db(connection)
         row = connection.execute(

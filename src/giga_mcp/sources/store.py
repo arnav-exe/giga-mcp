@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypedDict
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from giga_mcp.db import connect, init_db
@@ -52,7 +53,21 @@ def list_source_sets(db_path: str | Path | None = None) -> list[dict[str, object
         rows = connection.execute(
             """
             select s.source_id, s.source_name, s.status, s.created_at, s.updated_at,
-                   count(u.source_url_id) as url_count
+                   count(u.source_url_id) as url_count,
+                   (
+                       select cs.indexed_at
+                       from cache_snapshots cs
+                       where cs.source_id = s.source_id
+                       order by cs.indexed_at desc
+                       limit 1
+                   ) as indexed_at,
+                   (
+                       select cs.stale
+                       from cache_snapshots cs
+                       where cs.source_id = s.source_id
+                       order by cs.indexed_at desc
+                       limit 1
+                   ) as stale
             from source_sets s
             left join source_urls u on u.source_id = s.source_id
             group by s.source_id
@@ -83,16 +98,15 @@ def touch_source_set(source_id: str, db_path: str | Path | None = None) -> bool:
 def list_source_docs(source_id: str | None = None, framework: str | None = None, db_path: str | Path | None = None) -> list[dict[str, object]]:
     with connect(db_path) as connection:
         init_db(connection)
-        query = """
+        rows = connection.execute(
+            """
             select s.source_id, s.source_name, s.status, u.url, u.host, u.tier
             from source_sets s
             join source_urls u on u.source_id = s.source_id
             where (? is null or s.source_id = ?)
               and (? is null or lower(ifnull(s.source_name, '')) like '%' || lower(?) || '%')
             order by s.created_at asc, u.tier asc, u.url asc
-            """
-        rows = connection.execute(
-            query,
+            """,
             (source_id, source_id, framework, framework),
         ).fetchall()
 
@@ -148,9 +162,10 @@ def list_cached_documents(source_id: str | None = None, framework: str | None = 
         init_db(connection)
         rows = connection.execute(
             """
-            select d.source_id, d.url, d.fetched_at, d.status_code, d.content, s.source_name
+            select d.source_id, d.url, d.fetched_at, d.status_code, d.content, s.source_name, ifnull(u.tier, 2) as tier
             from source_documents d
             join source_sets s on s.source_id = d.source_id
+            left join source_urls u on u.source_id = d.source_id and u.url = d.url
             where (? is null or d.source_id = ?)
               and (? is null or lower(ifnull(s.source_name, '')) like '%' || lower(?) || '%')
             order by s.created_at asc, d.url asc
@@ -175,16 +190,53 @@ def get_cached_document(source_id: str, path_or_slug: str, db_path: str | Path |
             (source_id,),
         ).fetchall()
 
-    slug = path_or_slug.strip().lower().strip("/")
-    if not slug:
+    keys = _document_lookup_keys(path_or_slug)
+
+    if not keys:
         return None
 
+    exact_full_url, exact_path, exact_tail = keys
+    best_rank = 9
+    best_match: dict[str, object] | None = None
+
     for row in rows:
-        url = str(row["url"]).lower()
-        if slug in url or url.endswith(f"/{slug}"):
+        url = str(row["url"]).strip().lower()
+
+        if url == exact_full_url:
             return dict(row)
 
-    return None
+        path = urlparse(url).path.strip("/")
+        rank = (
+            1
+            if path == exact_path
+            else 2
+            if path.endswith(f"/{exact_tail}") or path == exact_tail
+            else 3
+            if exact_tail and exact_tail in url
+            else 9
+        )
+        if rank < best_rank:
+            best_rank = rank
+            best_match = dict(row)
+    return best_match
+
+
+def _document_lookup_keys(path_or_slug: str) -> tuple[str, str, str] | None:
+    raw = path_or_slug.strip().lower()
+
+    if not raw:
+        return None
+    full_url = raw.rstrip("/")
+
+    if full_url.startswith("http://") or full_url.startswith("https://"):
+        parsed = urlparse(full_url)
+        path = parsed.path.strip("/")
+        tail = path.split("/")[-1] if path else ""
+        return full_url, path, tail
+    path = raw.strip("/")
+    tail = path.split("/")[-1] if path else ""
+
+    return full_url, path, tail
 
 
 def save_cache_snapshot(source_id: str, indexed_at: str, expires_at: str, stale: bool = False, db_path: str | Path | None = None) -> None:

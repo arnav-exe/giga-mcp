@@ -1,9 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+import hashlib
+import re
 from time import sleep
-from typing import cast
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 import httpx
 
+from giga_mcp.logging import log_event
 from giga_mcp.discovery import load_discovery_result
 
 from .store import (
@@ -20,6 +23,13 @@ from .store import (
     replace_source_documents,
     touch_source_set,
 )
+
+
+LLMS_LINK_PATTERN = re.compile(
+    r"https?://[^\s)\]>\"']+llms[^\s)\]>\"']*\.txt|(?:\./|/)?[^\s)\]>\"']*llms[^\s)\]>\"']*\.txt",
+    re.IGNORECASE,
+)
+MAX_FETCH_WORKERS = 8
 
 
 def register_source_url(llms_url: str, source_name: str | None = None) -> dict[str, object]:
@@ -49,26 +59,26 @@ def register_source_url(llms_url: str, source_name: str | None = None) -> dict[s
             "llms_url": llms_url,
         }
 
-    tier = 1 if parsed.path.lower() in {"/llms.txt", "/llms-full.txt"} else 2
+    expanded_urls = _expand_llms_sources(llms_url)
+    all_urls = sorted(set([llms_url, *expanded_urls]))
+    accepted_sources = [_source_row(url) for url in all_urls]
+    source_id = create_source_set(source_name=source_name, urls=accepted_sources)
 
-    source_id = create_source_set(
-        source_name=source_name,
-        urls=[{"url": llms_url, "host": parsed.netloc.lower(), "tier": tier}],
-    )
-
-    return {
+    result = {
         "status": "ok",
         "tool": "register_source",
         "source_id": source_id,
         "source_name": source_name,
-        "accepted_sources": [
-            {
-                "url": llms_url,
-                "host": parsed.netloc.lower(),
-                "tier": tier,
-            }
-        ],
+        "refresh": refresh_source(source_id=source_id, force=True),
+        "accepted_sources": accepted_sources,
     }
+    log_event(
+        "source_registered",
+        source_id=source_id,
+        source_name=source_name,
+        accepted_sources=len(result["accepted_sources"]),
+    )
+    return result
 
 
 def register_discovered_sources(discovery_id: str) -> dict[str, object]:
@@ -99,25 +109,26 @@ def register_discovered_sources(discovery_id: str) -> dict[str, object]:
             for source in discovery.accepted_sources
         ],
     )
-    return {
+    refresh_result = refresh_source(source_id=source_id, force=True)
+    result = {
         "status": "ok",
         "tool": "register_discovered_sources",
         "discovery_id": discovery_id,
         "source_ids": [source_id],
+        "refresh": refresh_result,
     }
+    log_event(
+        "discovered_sources_registered", discovery_id=discovery_id, source_id=source_id
+    )
+    return result
 
 
 def list_sources() -> dict[str, object]:
-    sources = list_source_sets()
-
-    return {
-        "status": "ok",
-        "tool": "list_sources",
-        "sources": sources,
-    }
+    return {"status": "ok", "tool": "list_sources", "sources": list_source_sets()}
 
 
 def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
+    log_event("refresh_start", source_id=source_id, force=force)
     refreshed = touch_source_set(source_id)
 
     if not refreshed:
@@ -131,6 +142,11 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
 
     snapshot = latest_cache_snapshot(source_id=source_id)
     if snapshot and not force and not _snapshot_is_stale(snapshot):
+        log_event(
+            "refresh_skip_fresh",
+            source_id=source_id,
+            indexed_at=str(snapshot.get("indexed_at", "")),
+        )
         return {
             "status": "ok",
             "tool": "refresh_source",
@@ -160,6 +176,9 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
             stale=True,
         )
         cached_docs = list_cached_documents(source_id=source_id)
+        log_event(
+            "refresh_stale_fallback", source_id=source_id, cached_docs=len(cached_docs)
+        )
         return {
             "status": "ok",
             "tool": "refresh_source",
@@ -174,12 +193,15 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
         }
 
     replace_source_documents(source_id=source_id, documents=fetched_docs)
-    expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    now = datetime.now(timezone.utc)
     save_cache_snapshot(
-        source_id=source_id, indexed_at=indexed_at, expires_at=expires_at, stale=False
+        source_id=source_id,
+        indexed_at=indexed_at,
+        expires_at=(now + timedelta(hours=24)).isoformat(),
+        stale=False,
     )
 
-    return {
+    result = {
         "status": "ok",
         "tool": "refresh_source",
         "source_id": source_id,
@@ -190,6 +212,13 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
         "indexed_at": indexed_at,
         "stale_fallback": False,
     }
+    log_event(
+        "refresh_end",
+        source_id=source_id,
+        fetched_docs=len(fetched_docs),
+        stale_fallback=False,
+    )
+    return result
 
 
 def list_docs(source_id: str | None = None, framework: str | None = None) -> dict[str, object]:
@@ -204,7 +233,7 @@ def list_docs(source_id: str | None = None, framework: str | None = None) -> dic
     }
 
 
-def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8, ) -> dict[str, object]:
+def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8) -> dict[str, object]:
     top_k = _clamp_int(top_k, 1, 50)
     tokens = _expanded_tokens(query)
 
@@ -230,9 +259,10 @@ def search_docs(query: str, source_id: str | None = None, framework: str | None 
             document=document, tokens=tokens, section=section
         )
     ]
+    results = _dedupe_results(results)
     results.sort(key=_search_sort_key)
 
-    limited = results[: max(1, top_k)]
+    limited = [_public_result(result) for result in results[: max(1, top_k)]]
     indexed_at, stale = _search_index_metadata(source_id=source_id, documents=documents)
 
     return {
@@ -317,6 +347,7 @@ def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_ch
         for result in results
         if isinstance(result, dict)
     ]
+    citations = _dedupe_citations(citations)
     return {
         "status": "ok",
         "tool": "get_excerpt",
@@ -336,23 +367,29 @@ def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_ch
 
 def _fetch_source_documents(source_urls: list[SourceUrlRow]) -> list[SourceDocumentRow]:
     fetched_at = datetime.now(timezone.utc).isoformat()
-    documents: list[SourceDocumentRow] = []
-
-    with httpx.Client(timeout=15.0, follow_redirects=True) as client:
-        for source in source_urls:
-            url = str(source["url"])
-            status_code, content = _fetch_with_retry(client=client, url=url)
-
-            documents.append(
-                {
-                    "url": url,
-                    "fetched_at": fetched_at,
-                    "status_code": status_code,
-                    "content": content,
-                }
-            )
-
-    return documents
+    if not source_urls:
+        return []
+    documents: dict[str, SourceDocumentRow] = {}
+    with ThreadPoolExecutor(
+        max_workers=min(MAX_FETCH_WORKERS, max(1, len(source_urls)))
+    ) as executor:
+        futures = [
+            executor.submit(_fetch_one_source, str(source["url"]))
+            for source in source_urls
+        ]
+        for future in as_completed(futures):
+            url, status_code, content = future.result()
+            documents[url] = {
+                "url": url,
+                "fetched_at": fetched_at,
+                "status_code": status_code,
+                "content": content,
+            }
+    return [
+        documents[str(source["url"])]
+        for source in source_urls
+        if str(source["url"]) in documents
+    ]
 
 
 def _fetch_with_retry(client: httpx.Client, url: str, retries: int = 2) -> tuple[int | None, str | None]:
@@ -370,6 +407,12 @@ def _fetch_with_retry(client: httpx.Client, url: str, retries: int = 2) -> tuple
             sleep(delay)
             delay *= 2
     return None, None
+
+
+def _fetch_one_source(url: str) -> tuple[str, int | None, str | None]:
+    with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+        status_code, content = _fetch_with_retry(client=client, url=url)
+    return url, status_code, content
 
 
 def _search_document(document: dict[str, object], tokens: list[str], section: str | None) -> list[dict[str, object]]:
@@ -403,6 +446,7 @@ def _search_document(document: dict[str, object], tokens: list[str], section: st
                 "section": section_name,
                 "chunk_id": f"{document['source_id']}:{index}",
                 "score": float(score),
+                "tier": _to_int(document.get("tier", 2), 2),
             }
         )
 
@@ -424,7 +468,6 @@ def _expanded_tokens(query: str) -> list[str]:
     expanded = [token for token in base]
     for token in base:
         expanded.extend(aliases.get(token, []))
-    # keep deterministic order but remove dupes
     return list(dict.fromkeys(expanded))
 
 
@@ -446,11 +489,12 @@ def _nearest_heading(lines: list[str], index: int) -> str:
     return "general"
 
 
-def _search_sort_key(item: dict[str, object]) -> tuple[float, str, str]:
+def _search_sort_key(item: dict[str, object]) -> tuple[float, float, str, str]:
     return (
         -float(str(item["score"])),
-        cast(str, item["source_url"]),
-        cast(str, item["chunk_id"]),
+        float(str(item.get("tier", 2))),
+        str(item["source_url"]),
+        str(item["chunk_id"]),
     )
 
 
@@ -491,9 +535,96 @@ def _snapshot_is_stale(snapshot: dict[str, object]) -> bool:
     return expires_at < datetime.now(timezone.utc).isoformat()
 
 
+def _dedupe_results(results: list[dict[str, object]]) -> list[dict[str, object]]:
+    seen = set()
+    deduped = []
+    for result in results:
+        source_url = str(result.get("source_url", ""))
+        section = str(result.get("section", ""))
+        snippet = str(result.get("snippet", ""))
+        digest = hashlib.sha1(
+            f"{source_url}|{section}|{snippet}".encode("utf-8")
+        ).hexdigest()
+        if digest in seen:
+            continue
+        seen.add(digest)
+        deduped.append(result)
+    return deduped
+
+
+def _dedupe_citations(citations: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen = set()
+    deduped = []
+    for citation in citations:
+        key = (citation.get("source_url", ""), citation.get("chunk_id", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(citation)
+    return deduped
+
+
+def _public_result(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "snippet": result.get("snippet", ""),
+        "source_url": result.get("source_url", ""),
+        "title": result.get("title", "untitled"),
+        "section": result.get("section", "general"),
+        "chunk_id": result.get("chunk_id", ""),
+        "score": result.get("score", 0.0),
+    }
+
+
+def _to_int(value: object, default: int) -> int:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def _clamp_int(value: int, minimum: int, maximum: int) -> int:
     try:
         parsed = int(value)
     except (TypeError, ValueError):
         return minimum
     return max(minimum, min(maximum, parsed))
+
+
+def _expand_llms_sources(base_url: str) -> list[str]:
+    try:
+        response = httpx.get(base_url, timeout=10.0, follow_redirects=True)
+    except httpx.RequestError:
+        return []
+    if response.status_code != 200:
+        return []
+    base_host = urlparse(base_url).netloc.lower()
+    matches = LLMS_LINK_PATTERN.findall(response.text or "")
+    expanded = []
+
+    for match in matches:
+        url = urljoin(base_url, match.strip())
+        parsed = urlparse(url)
+
+        if parsed.scheme.lower() != "https" or parsed.netloc.lower() != base_host:
+            continue
+
+        if (not parsed.path.lower().endswith(".txt") or "llms" not in parsed.path.lower()):
+            continue
+        expanded.append(url)
+    return expanded
+
+
+def _tier_for_url(url: str) -> int:
+    path = urlparse(url).path.lower()
+
+    if path in {"/llms.txt", "/llms-full.txt"}:
+        return 1
+    return 2
+
+
+def _source_row(url: str) -> SourceUrlRow:
+    return {
+        "url": url,
+        "host": urlparse(url).netloc.lower(),
+        "tier": _tier_for_url(url),
+    }

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 LOGGER_NAME = "giga_mcp_logger"
 
 
-def init_logger(level=logging.INFO):
+def init_logger(level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(LOGGER_NAME)
     if logger.handlers:
         logger.setLevel(level)
@@ -19,7 +19,7 @@ def init_logger(level=logging.INFO):
     return logger
 
 
-def log_event(event, **payload):
+def log_event(event: str, **payload: object) -> None:
     logger = logging.getLogger(LOGGER_NAME)
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -27,9 +27,3 @@ def log_event(event, **payload):
         **payload,
     }
     logger.info(json.dumps(record, sort_keys=True, ensure_ascii=True))
-
-
-if __name__ == "__main__":
-    init_logger()
-
-    log_event("hello world")
