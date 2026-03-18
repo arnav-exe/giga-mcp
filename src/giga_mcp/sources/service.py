@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import cast
 from urllib.parse import urlparse
 import httpx
@@ -11,9 +11,11 @@ from .store import (
     create_source_set,
     get_cached_document,
     get_source_urls,
+    latest_cache_snapshot,
     list_cached_documents,
     list_source_docs,
     list_source_sets,
+    save_cache_snapshot,
     replace_source_documents,
     touch_source_set,
 )
@@ -129,6 +131,11 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
     source_urls = get_source_urls(source_id)
     fetched_docs = _fetch_source_documents(source_urls)
     replace_source_documents(source_id=source_id, documents=fetched_docs)
+    indexed_at = datetime.now(timezone.utc).isoformat()
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    save_cache_snapshot(
+        source_id=source_id, indexed_at=indexed_at, expires_at=expires_at, stale=False
+    )
 
     return {
         "status": "ok",
@@ -153,7 +160,7 @@ def list_docs(source_id: str | None = None, framework: str | None = None) -> dic
 
 
 def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8) -> dict[str, object]:
-    tokens = _tokens(query)
+    tokens = _expanded_tokens(query)
 
     if not tokens:
         return {
@@ -180,9 +187,7 @@ def search_docs(query: str, source_id: str | None = None, framework: str | None 
     results.sort(key=_search_sort_key)
 
     limited = results[: max(1, top_k)]
-    indexed_at = max(
-        (str(document["fetched_at"]) for document in documents), default=""
-    )
+    indexed_at, stale = _search_index_metadata(source_id=source_id, documents=documents)
 
     return {
         "status": "ok",
@@ -194,7 +199,7 @@ def search_docs(query: str, source_id: str | None = None, framework: str | None 
         "top_k": top_k,
         "results": limited,
         "indexed_at": indexed_at,
-        "stale": False,
+        "stale": stale,
     }
 
 
@@ -214,6 +219,7 @@ def get_doc(source_id: str, path_or_slug: str) -> dict[str, object]:
         content = ""
 
     title = _title([line.strip() for line in content.splitlines() if line.strip()])
+    indexed_at, stale = _snapshot_metadata(source_id)
     return {
         "status": "ok",
         "tool": "get_doc",
@@ -230,8 +236,8 @@ def get_doc(source_id: str, path_or_slug: str) -> dict[str, object]:
         ],
         "index_metadata": {
             "source_id": source_id,
-            "indexed_at": str(document.get("fetched_at") or ""),
-            "stale": False,
+            "indexed_at": indexed_at,
+            "stale": stale,
         },
     }
 
@@ -349,6 +355,21 @@ def _tokens(query: str) -> list[str]:
     return [part for part in query.lower().split() if part]
 
 
+def _expanded_tokens(query: str) -> list[str]:
+    base = _tokens(query)
+    aliases = {
+        "js": ["javascript"],
+        "ts": ["typescript"],
+        "py": ["python"],
+        "llm": ["llms", "language", "model"],
+    }
+    expanded = [token for token in base]
+    for token in base:
+        expanded.extend(aliases.get(token, []))
+    # keep deterministic order but remove dupes
+    return list(dict.fromkeys(expanded))
+
+
 def _title(lines: list[str]) -> str:
     for line in lines:
         if line.startswith("#"):
@@ -373,3 +394,40 @@ def _search_sort_key(item: dict[str, object]) -> tuple[float, str, str]:
         cast(str, item["source_url"]),
         cast(str, item["chunk_id"]),
     )
+
+
+def _snapshot_metadata(source_id: str) -> tuple[str, bool]:
+    snapshot = latest_cache_snapshot(source_id=source_id)
+    if not snapshot:
+        return "", False
+    return str(snapshot.get("indexed_at", "")), _snapshot_is_stale(snapshot)
+
+
+def _search_index_metadata(source_id: str | None, documents: list[dict[str, object]]) -> tuple[str, bool]:
+    if source_id:
+        return _snapshot_metadata(source_id)
+    source_ids = list(
+        dict.fromkeys(
+            str(document["source_id"])
+            for document in documents
+            if document.get("source_id")
+        )
+    )
+    if not source_ids:
+        return "", False
+    indexed_values = []
+    stale_values = []
+    for sid in source_ids:
+        indexed_at, stale = _snapshot_metadata(sid)
+        indexed_values.append(indexed_at)
+        stale_values.append(stale)
+    return max(indexed_values, default=""), any(stale_values)
+
+
+def _snapshot_is_stale(snapshot: dict[str, object]) -> bool:
+    if snapshot.get("stale", 0) in (1, "1", True):
+        return True
+    expires_at = str(snapshot.get("expires_at", ""))
+    if not expires_at:
+        return False
+    return expires_at < datetime.now(timezone.utc).isoformat()

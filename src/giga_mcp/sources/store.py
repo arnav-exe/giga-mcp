@@ -185,3 +185,33 @@ def get_cached_document(source_id: str, path_or_slug: str, db_path: str | Path |
             return dict(row)
 
     return None
+
+
+def save_cache_snapshot(source_id: str, indexed_at: str, expires_at: str, stale: bool = False, db_path: str | Path | None = None) -> None:
+    with connect(db_path) as connection:
+        init_db(connection)
+        connection.execute(
+            """
+            insert into cache_snapshots (source_id, indexed_at, expires_at, stale)
+            values (?, ?, ?, ?)
+            """,
+            (source_id, indexed_at, expires_at, 1 if stale else 0),
+        )
+        connection.commit()
+
+
+def latest_cache_snapshot(source_id: str, db_path: str | Path | None = None) -> dict[str, object] | None:
+    with connect(db_path) as connection:
+        init_db(connection)
+        row = connection.execute(
+            """
+            select source_id, indexed_at, expires_at, stale
+            from cache_snapshots
+            where source_id = ?
+            order by indexed_at desc
+            limit 1
+            """,
+            (source_id,),
+        ).fetchone()
+
+    return dict(row) if row else None
