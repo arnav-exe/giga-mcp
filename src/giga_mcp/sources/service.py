@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from time import sleep
 from typing import cast
 from urllib.parse import urlparse
 import httpx
@@ -159,7 +160,7 @@ def list_docs(source_id: str | None = None, framework: str | None = None) -> dic
     }
 
 
-def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8) -> dict[str, object]:
+def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8, ) -> dict[str, object]:
     tokens = _expanded_tokens(query)
 
     if not tokens:
@@ -293,14 +294,7 @@ def _fetch_source_documents(source_urls: list[SourceUrlRow]) -> list[SourceDocum
     with httpx.Client(timeout=15.0, follow_redirects=True) as client:
         for source in source_urls:
             url = str(source["url"])
-            try:
-                response = client.get(url)
-                content = response.text if response.status_code == 200 else None
-                status_code = response.status_code
-
-            except httpx.RequestError:
-                content = None
-                status_code = None
+            status_code, content = _fetch_with_retry(client=client, url=url)
 
             documents.append(
                 {
@@ -312,6 +306,23 @@ def _fetch_source_documents(source_urls: list[SourceUrlRow]) -> list[SourceDocum
             )
 
     return documents
+
+
+def _fetch_with_retry(client: httpx.Client, url: str, retries: int = 2) -> tuple[int | None, str | None]:
+    delay = 0.25
+    for attempt in range(retries + 1):
+        try:
+            response = client.get(url)
+            return (
+                response.status_code,
+                response.text if response.status_code == 200 else None,
+            )
+        except httpx.RequestError:
+            if attempt == retries:
+                return None, None
+            sleep(delay)
+            delay *= 2
+    return None, None
 
 
 def _search_document(document: dict[str, object], tokens: list[str], section: str | None) -> list[dict[str, object]]:

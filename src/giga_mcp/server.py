@@ -56,7 +56,7 @@ def create_server() -> FastMCP:
         return run_list_docs(source_id=source_id, framework=framework)
 
     @app.tool()
-    def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8) -> dict[str, Any]:
+    def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8, ) -> dict[str, Any]:
         return run_search_docs(
             query=query,
             source_id=source_id,
