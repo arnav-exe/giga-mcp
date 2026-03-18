@@ -71,14 +71,11 @@ def create_server() -> FastMCP:
 
     @app.tool()
     def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_chars: int = 4000) -> dict[str, Any]:
-        return _not_implemented(
-            "get_excerpt",
+        return run_get_excerpt(
             query=query,
             source_id=source_id,
             top_k=top_k,
             max_chars=max_chars,
-            content="",
-            citations=[],
         )
 
     return app

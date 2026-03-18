@@ -236,6 +236,50 @@ def get_doc(source_id: str, path_or_slug: str) -> dict[str, object]:
     }
 
 
+def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_chars: int = 4000) -> dict[str, object]:
+    searched = search_docs(
+        query=query,
+        source_id=source_id,
+        framework=None,
+        section=None,
+        top_k=top_k,
+    )
+    results = searched.get("results")
+    if not isinstance(results, list):
+        results = []
+    snippets = [
+        str(result.get("snippet", "")) for result in results if isinstance(result, dict)
+    ]
+    content = "\n\n".join(snippets)
+    if len(content) > max_chars:
+        content = content[:max_chars]
+    citations = [
+        {
+            "source_url": str(result.get("source_url", "")),
+            "title": str(result.get("title", "untitled")),
+            "section": str(result.get("section", "general")),
+            "chunk_id": str(result.get("chunk_id", "")),
+        }
+        for result in results
+        if isinstance(result, dict)
+    ]
+    return {
+        "status": "ok",
+        "tool": "get_excerpt",
+        "query": query,
+        "source_id": source_id,
+        "top_k": top_k,
+        "max_chars": max_chars,
+        "content": content,
+        "citations": citations,
+        "index_metadata": {
+            "source_id": source_id or "",
+            "indexed_at": str(searched.get("indexed_at", "")),
+            "stale": bool(searched.get("stale", False)),
+        },
+    }
+
+
 def _fetch_source_documents(source_urls: list[SourceUrlRow]) -> list[SourceDocumentRow]:
     fetched_at = datetime.now(timezone.utc).isoformat()
     documents: list[SourceDocumentRow] = []

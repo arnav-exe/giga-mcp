@@ -1,5 +1,6 @@
 from .service import (
     get_doc,
+    get_excerpt,
     list_docs,
     list_sources,
     refresh_source,
@@ -17,6 +18,7 @@ from .store import (
 
 __all__ = [
     "get_doc",
+    "get_excerpt",
     "list_docs",
     "list_sources",
     "refresh_source",
