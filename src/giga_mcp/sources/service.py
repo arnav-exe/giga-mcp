@@ -205,6 +205,7 @@ def list_docs(source_id: str | None = None, framework: str | None = None) -> dic
 
 
 def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8, ) -> dict[str, object]:
+    top_k = _clamp_int(top_k, 1, 50)
     tokens = _expanded_tokens(query)
 
     if not tokens:
@@ -288,6 +289,8 @@ def get_doc(source_id: str, path_or_slug: str) -> dict[str, object]:
 
 
 def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_chars: int = 4000) -> dict[str, object]:
+    top_k = _clamp_int(top_k, 1, 20)
+    max_chars = _clamp_int(max_chars, 200, 20000)
     searched = search_docs(
         query=query,
         source_id=source_id,
@@ -486,3 +489,11 @@ def _snapshot_is_stale(snapshot: dict[str, object]) -> bool:
     if not expires_at:
         return False
     return expires_at < datetime.now(timezone.utc).isoformat()
+
+
+def _clamp_int(value: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return minimum
+    return max(minimum, min(maximum, parsed))
