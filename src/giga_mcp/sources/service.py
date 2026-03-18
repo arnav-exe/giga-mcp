@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import cast
 from urllib.parse import urlparse
 import httpx
 
@@ -8,6 +9,7 @@ from .store import (
     SourceDocumentRow,
     SourceUrlRow,
     create_source_set,
+    get_cached_document,
     get_source_urls,
     list_cached_documents,
     list_source_docs,
@@ -152,6 +154,7 @@ def list_docs(source_id: str | None = None, framework: str | None = None) -> dic
 
 def search_docs(query: str, source_id: str | None = None, framework: str | None = None, section: str | None = None, top_k: int = 8) -> dict[str, object]:
     tokens = _tokens(query)
+
     if not tokens:
         return {
             "status": "ok",
@@ -174,9 +177,7 @@ def search_docs(query: str, source_id: str | None = None, framework: str | None 
             document=document, tokens=tokens, section=section
         )
     ]
-    results.sort(
-        key=lambda item: (-item["score"], item["source_url"], item["chunk_id"])
-    )
+    results.sort(key=_search_sort_key)
 
     limited = results[: max(1, top_k)]
     indexed_at = max(
@@ -197,7 +198,45 @@ def search_docs(query: str, source_id: str | None = None, framework: str | None 
     }
 
 
-def _fetch_source_documents(source_urls: list[SourceUrlRow],) -> list[SourceDocumentRow]:
+def get_doc(source_id: str, path_or_slug: str) -> dict[str, object]:
+    document = get_cached_document(source_id=source_id, path_or_slug=path_or_slug)
+    if not document:
+        return {
+            "status": "error",
+            "tool": "get_doc",
+            "message": "document not found in cached source set",
+            "source_id": source_id,
+            "path_or_slug": path_or_slug,
+        }
+
+    content = document.get("content")
+    if not isinstance(content, str):
+        content = ""
+
+    title = _title([line.strip() for line in content.splitlines() if line.strip()])
+    return {
+        "status": "ok",
+        "tool": "get_doc",
+        "source_id": source_id,
+        "path_or_slug": path_or_slug,
+        "content": content,
+        "citations": [
+            {
+                "source_url": str(document["url"]),
+                "title": title,
+                "section": "general",
+                "chunk_id": f"{source_id}:0",
+            }
+        ],
+        "index_metadata": {
+            "source_id": source_id,
+            "indexed_at": str(document.get("fetched_at") or ""),
+            "stale": False,
+        },
+    }
+
+
+def _fetch_source_documents(source_urls: list[SourceUrlRow]) -> list[SourceDocumentRow]:
     fetched_at = datetime.now(timezone.utc).isoformat()
     documents: list[SourceDocumentRow] = []
 
@@ -282,3 +321,11 @@ def _nearest_heading(lines: list[str], index: int) -> str:
             return candidate.lstrip("# ") or "general"
 
     return "general"
+
+
+def _search_sort_key(item: dict[str, object]) -> tuple[float, str, str]:
+    return (
+        -float(str(item["score"])),
+        cast(str, item["source_url"]),
+        cast(str, item["chunk_id"]),
+    )

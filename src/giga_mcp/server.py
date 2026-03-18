@@ -3,12 +3,7 @@ from fastmcp import FastMCP
 
 from giga_mcp.discovery import discover_official_sources as run_discovery
 from giga_mcp.discovery import save_discovery_result
-from giga_mcp.sources import list_docs as run_list_docs
-from giga_mcp.sources import refresh_source as run_refresh_source
-from giga_mcp.sources import list_sources as run_list_sources
-from giga_mcp.sources import search_docs as run_search_docs
-from giga_mcp.sources import register_discovered_sources as run_register_discovered_sources
-from giga_mcp.sources import register_source_url
+from giga_mcp.sources import *
 
 
 def _not_implemented(tool: str, **payload: Any) -> dict[str, Any]:
@@ -72,14 +67,10 @@ def create_server() -> FastMCP:
 
     @app.tool()
     def get_doc(source_id: str, path_or_slug: str) -> dict[str, Any]:
-        return _not_implemented(
-            "get_doc",
-            source_id=source_id,
-            path_or_slug=path_or_slug,
-        )
+        return run_get_doc(source_id=source_id, path_or_slug=path_or_slug)
 
     @app.tool()
-    def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_chars: int = 4000,) -> dict[str, Any]:
+    def get_excerpt(query: str, source_id: str | None = None, top_k: int = 5, max_chars: int = 4000) -> dict[str, Any]:
         return _not_implemented(
             "get_excerpt",
             query=query,

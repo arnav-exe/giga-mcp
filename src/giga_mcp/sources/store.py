@@ -159,3 +159,29 @@ def list_cached_documents(source_id: str | None = None, framework: str | None = 
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def get_cached_document(source_id: str, path_or_slug: str, db_path: str | Path | None = None) -> dict[str, object] | None:
+    with connect(db_path) as connection:
+        init_db(connection)
+        rows = connection.execute(
+            """
+            select d.source_id, d.url, d.fetched_at, d.status_code, d.content, s.source_name
+            from source_documents d
+            join source_sets s on s.source_id = d.source_id
+            where d.source_id = ?
+            order by d.url asc
+            """,
+            (source_id,),
+        ).fetchall()
+
+    slug = path_or_slug.strip().lower().strip("/")
+    if not slug:
+        return None
+
+    for row in rows:
+        url = str(row["url"]).lower()
+        if slug in url or url.endswith(f"/{slug}"):
+            return dict(row)
+
+    return None
