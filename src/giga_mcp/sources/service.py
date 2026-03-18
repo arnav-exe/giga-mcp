@@ -144,8 +144,36 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
 
     source_urls = get_source_urls(source_id)
     fetched_docs = _fetch_source_documents(source_urls)
-    replace_source_documents(source_id=source_id, documents=fetched_docs)
     indexed_at = datetime.now(timezone.utc).isoformat()
+    successful_fetches = [
+        document
+        for document in fetched_docs
+        if document["status_code"] == 200 and document["content"]
+    ]
+
+    if not successful_fetches:
+        expires_at = indexed_at
+        save_cache_snapshot(
+            source_id=source_id,
+            indexed_at=indexed_at,
+            expires_at=expires_at,
+            stale=True,
+        )
+        cached_docs = list_cached_documents(source_id=source_id)
+        return {
+            "status": "ok",
+            "tool": "refresh_source",
+            "source_id": source_id,
+            "force": force,
+            "refreshed": False,
+            "fetched_docs": 0,
+            "skipped": False,
+            "indexed_at": indexed_at,
+            "stale_fallback": True,
+            "cached_docs": len(cached_docs),
+        }
+
+    replace_source_documents(source_id=source_id, documents=fetched_docs)
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
     save_cache_snapshot(
         source_id=source_id, indexed_at=indexed_at, expires_at=expires_at, stale=False
@@ -160,6 +188,7 @@ def refresh_source(source_id: str, force: bool = False) -> dict[str, object]:
         "fetched_docs": len(fetched_docs),
         "skipped": False,
         "indexed_at": indexed_at,
+        "stale_fallback": False,
     }
 
 
