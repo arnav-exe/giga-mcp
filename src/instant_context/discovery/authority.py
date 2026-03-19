@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 from time import sleep
 import httpx
 
-from giga_mcp.logging import log_event
+from instant_context.logging import log_event
 
 
 def fetch_npm_authority(name: str, timeout: float = 10.0) -> dict[str, object]:

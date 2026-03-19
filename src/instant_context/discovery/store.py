@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from giga_mcp.db import connect, init_db
-from giga_mcp.models import DiscoveryResult
+from instant_context.db import connect, init_db
+from instant_context.models import DiscoveryResult
 
 
 def save_discovery_result(result: DiscoveryResult, db_path: str | Path | None = None) -> None:

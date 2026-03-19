@@ -4,7 +4,7 @@ from typing import TypedDict
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from giga_mcp.db import connect, init_db
+from instant_context.db import connect, init_db
 
 
 class SourceUrlRow(TypedDict):

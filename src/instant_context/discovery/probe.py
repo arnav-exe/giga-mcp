@@ -5,7 +5,7 @@ import re
 from time import sleep
 import httpx
 
-from giga_mcp.logging import log_event
+from instant_context.logging import log_event
 
 
 PROBE_PATHS = ("/llms.txt", "/docs/llms.txt", "/latest/llms.txt")

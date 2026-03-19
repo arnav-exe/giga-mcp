@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from typing import cast
 from uuid import uuid4
 
-from giga_mcp.logging import log_event
-from giga_mcp.models import AcceptedSource, AuthorityEvidence, DiscoveryResult, ProbeResult, RejectedCandidate
+from instant_context.logging import log_event
+from instant_context.models import AcceptedSource, AuthorityEvidence, DiscoveryResult, ProbeResult, RejectedCandidate
 
 from .allowlist import build_allowlist_hosts, is_allowed_source_url
 from .authority import fetch_npm_authority, fetch_pypi_authority

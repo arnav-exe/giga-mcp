@@ -6,8 +6,8 @@ from time import sleep
 from urllib.parse import urljoin, urlparse
 import httpx
 
-from giga_mcp.logging import log_event
-from giga_mcp.discovery import load_discovery_result
+from instant_context.logging import log_event
+from instant_context.discovery import load_discovery_result
 
 from .store import (
     SourceDocumentRow,

@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 
-LOGGER_NAME = "giga_mcp_logger"
+LOGGER_NAME = "instant_context_logger"
 
 
 def init_logger(level: int = logging.INFO) -> logging.Logger:

@@ -4,7 +4,7 @@ import sqlite3
 
 
 def default_db_path() -> Path:
-    return Path.cwd() / ".giga-mcp" / "giga_mcp.sqlite3"
+    return Path.cwd() / ".instant-context" / "instant_context.sqlite3"
 
 
 def connect(db_path: str | Path | None = None) -> sqlite3.Connection:

@@ -1,4 +1,4 @@
-# giga-mcp
+# instant-context
 
 ## Explanation of Tier Precedence:
 The 'tier' of an 'llms*.txt' source dictates how trustworthy/reliable it is. Sources from higher tiers will be prioritzed
@@ -12,5 +12,5 @@ The 'tier' of an 'llms*.txt' source dictates how trustworthy/reliable it is. Sou
 
 ```bash
 pip install -r requirements.txt
-python -m giga_mcp
+python -m instant_context
 ```

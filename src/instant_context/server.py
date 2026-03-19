@@ -1,19 +1,19 @@
 from fastmcp import FastMCP
 
-from giga_mcp.discovery import discover_official_sources as run_discovery
-from giga_mcp.discovery import save_discovery_result
-from giga_mcp.sources import get_doc as run_get_doc
-from giga_mcp.sources import get_excerpt as run_get_excerpt
-from giga_mcp.sources import list_docs as run_list_docs
-from giga_mcp.sources import list_sources as run_list_sources
-from giga_mcp.sources import refresh_source as run_refresh_source
-from giga_mcp.sources import register_discovered_sources as run_register_discovered_sources
-from giga_mcp.sources import register_source_url
-from giga_mcp.sources import search_docs as run_search_docs
+from instant_context.discovery import discover_official_sources as run_discovery
+from instant_context.discovery import save_discovery_result
+from instant_context.sources import get_doc as run_get_doc
+from instant_context.sources import get_excerpt as run_get_excerpt
+from instant_context.sources import list_docs as run_list_docs
+from instant_context.sources import list_sources as run_list_sources
+from instant_context.sources import refresh_source as run_refresh_source
+from instant_context.sources import register_discovered_sources as run_register_discovered_sources
+from instant_context.sources import register_source_url
+from instant_context.sources import search_docs as run_search_docs
 
 
 def create_server() -> FastMCP:
-    app = FastMCP("giga-mcp")
+    app = FastMCP("instant-context")
 
     @app.tool()
     def discover_official_sources(name: str, ecosystem: str, timeout: float = 10.0) -> dict[str, object]:
