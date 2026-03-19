@@ -45,7 +45,7 @@ def discover_official_sources(name: str, ecosystem: str, timeout: float = 10.0) 
             reason="linked official llms source"
             if url in discovered_links
             else "strict probe success on allowlisted host",
-            confidence=0.95 if tier == 1 else 0.85,
+            confidence=_confidence_for(tier=tier, linked=(url in discovered_links)),
         )
         for url in accepted_urls
         for tier in [_tier_for(url)]
@@ -107,6 +107,17 @@ def _probe_rejection_reason(probe: dict[str, object]) -> str:
 def _probe_hosts(allowlist_hosts: list[str]) -> list[str]:
     blocked_hosts = {"github.com", "gitlab.com", "bitbucket.org"}
     return [host for host in allowlist_hosts if host not in blocked_hosts]
+
+
+def _confidence_for(tier: int, linked: bool) -> float:
+    base, tier_penalty, linked_penalty = 1.0, 0.1, 0.05
+    return round(
+        max(
+            0.0,
+            base - ((tier - 1) * tier_penalty) - (linked_penalty if linked else 0.0),
+        ),
+        2,
+    )
 
 
 def _normalize_probes_and_rejections(raw_probes: object, linked_probe_urls: list[str], allowlist_hosts: list[str]) -> tuple[list[ProbeResult], list[RejectedCandidate]]:

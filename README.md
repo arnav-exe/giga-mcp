@@ -6,5 +6,11 @@ The 'tier' of an 'llms*.txt' source dictates how trustworthy/reliable it is. Sou
 - tier 2: subpath files (`/docs/.../llms.txt`, `/latest/llms.txt`, versioned doc indexes) (these have lower priority, as they may be out of date or for an older version)
 
 # TODO:
- - test all processes that touch the squee lite db
- - determine confidence values to assign to tier1 and tier2 sources
+  - test all processes that touch the squee lite db
+
+# Quickstart
+
+```bash
+pip install -r requirements.txt
+python -m giga_mcp
+```
